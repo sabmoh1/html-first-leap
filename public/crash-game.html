@@ -794,7 +794,7 @@ if(isCountdownText(text)){
 }
           const num = parseNumberFromString(text);
           const now = Date.now();
-          if(num !== null && lastNumeric !== null && !(Number.isInteger(num) && num <= 7)){
+          if(num !== null && lastNumeric !== null && !(Number.isInteger(num) && num <= 10)){
             // rising detection with thresholds
             if(num > lastNumeric + MIN_DELTA && num >= MIN_START_VALUE){
               // start flight only if not already flying
@@ -816,8 +816,8 @@ if(isCountdownText(text)){
             }, STOP_DEBOUNCE);
             lastNumeric = num;
           } else {
-            // fallback to text-change detection as older versions
-            if(text !== lastText){
+            // fallback to text-change detection - but skip if countdown
+            if(text !== lastText && !isCountdownText(text)){
               if(state !== 'flying'){
                 startFlight();
               }
