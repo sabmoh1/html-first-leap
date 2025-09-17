@@ -847,6 +847,172 @@ if(isCountdownText(text)){
 </script>
 <!-- END INJECTED -->
 
+<!-- BEGIN BACKGROUND ANIMATION CONTROL -->
+<style id="background-control-style">
+/* CSS للتحكم في حركة الخلفية والنقاط */
+.crash__mountains.frozen,
+.crash__mountains.frozen *,
+.crash-game__dots.frozen {
+  animation-play-state: paused !important;
+  -webkit-animation-play-state: paused !important;
+}
+
+.crash__mountains.running,
+.crash__mountains.running *,
+.crash-game__dots.running {
+  animation-play-state: running !important;
+  -webkit-animation-play-state: running !important;
+}
+</style>
+
+<script id="background-control-script">
+(function() {
+  console.log('Background animation control script loaded');
+  
+  // العثور على العناصر
+  const mountainsElement = document.querySelector('.crash__mountains');
+  const dotsVertical = document.querySelector('.crash-game__dots--vertical');
+  const dotsHorizontal = document.querySelector('.crash-game__dots--horizontal');
+  const counterElement = document.querySelector('.crash-game__counter');
+  const timerElement = document.querySelector('.crash-timer--countdown');
+  
+  if (!mountainsElement || !dotsVertical || !dotsHorizontal || !counterElement) {
+    console.warn('Could not find required elements for background control');
+    return;
+  }
+  
+  console.log('Background control elements found');
+  
+  // متغيرات لتتبع الحالة
+  let isCountdownActive = false;
+  let isCounterRising = false;
+  let lastCounterValue = null;
+  let countdownObserver = null;
+  
+  // دالة لإيقاف الأنيميشن
+  function freezeBackground() {
+    console.log('Freezing background animation');
+    mountainsElement.classList.remove('running');
+    mountainsElement.classList.add('frozen');
+    dotsVertical.classList.remove('running');
+    dotsVertical.classList.add('frozen');
+    dotsHorizontal.classList.remove('running'); 
+    dotsHorizontal.classList.add('frozen');
+  }
+  
+  // دالة لتشغيل الأنيميشن
+  function resumeBackground() {
+    console.log('Resuming background animation');
+    mountainsElement.classList.remove('frozen');
+    mountainsElement.classList.add('running');
+    dotsVertical.classList.remove('frozen');
+    dotsVertical.classList.add('running');
+    dotsHorizontal.classList.remove('frozen');
+    dotsHorizontal.classList.add('running');
+  }
+  
+  // دالة لفحص إذا كان النص عد تنازلي
+  function isCountdownText(txt) {
+    return /^[1-7]$/.test(txt.trim());
+  }
+  
+  // دالة لاستخراج القيمة الرقمية من النص
+  function parseCounterValue(text) {
+    if (!text) return null;
+    const match = text.replace(/,/g, '').match(/\d+(\.\d+)?/);
+    if (!match) return null;
+    const num = parseFloat(match[0]);
+    return isFinite(num) ? num : null;
+  }
+  
+  // مراقب للعد التنازلي
+  function observeCountdown() {
+    if (countdownObserver) {
+      countdownObserver.disconnect();
+    }
+    
+    countdownObserver = new MutationObserver(() => {
+      const isVisible = timerElement.style.display !== 'none';
+      
+      if (isVisible && !isCountdownActive) {
+        console.log('Countdown started - freezing background');
+        isCountdownActive = true;
+        isCounterRising = false;
+        freezeBackground();
+      } else if (!isVisible && isCountdownActive) {
+        console.log('Countdown ended - resuming background');
+        isCountdownActive = false;
+        isCounterRising = true;
+        resumeBackground();
+      }
+    });
+    
+    countdownObserver.observe(timerElement, {
+      attributes: true,
+      attributeFilter: ['style']
+    });
+  }
+  
+  // مراقب للعداد الرئيسي
+  const counterObserver = new MutationObserver(() => {
+    const currentText = counterElement.textContent.trim();
+    
+    // تجاهل نصوص العد التنازلي
+    if (isCountdownText(currentText)) {
+      return;
+    }
+    
+    const currentValue = parseCounterValue(currentText);
+    
+    if (currentValue !== null && lastCounterValue !== null) {
+      // إذا توقف العداد (لم يتغير لمدة معينة)
+      if (currentValue === lastCounterValue && isCounterRising) {
+        setTimeout(() => {
+          const latestText = counterElement.textContent.trim();
+          const latestValue = parseCounterValue(latestText);
+          
+          // إذا كان العداد ما زال متوقفاً عند نفس القيمة
+          if (latestValue === currentValue && isCounterRising) {
+            console.log('Counter stopped at:', currentValue, '- freezing background');
+            isCounterRising = false;
+            freezeBackground();
+          }
+        }, 500); // انتظار نصف ثانية للتأكد من التوقف
+      }
+      // إذا بدأ العداد بالصعود مرة أخرى
+      else if (currentValue > lastCounterValue && !isCounterRising && !isCountdownActive) {
+        console.log('Counter rising from:', lastCounterValue, 'to:', currentValue, '- resuming background');
+        isCounterRising = true;
+        resumeBackground();
+      }
+    }
+    
+    lastCounterValue = currentValue;
+  });
+  
+  // بدء المراقبة
+  counterObserver.observe(counterElement, {
+    childList: true,
+    characterData: true,
+    subtree: true
+  });
+  
+  // بدء مراقبة العد التنازلي
+  observeCountdown();
+  
+  // التأكد من الحالة الأولية
+  setTimeout(() => {
+    const initialText = counterElement.textContent.trim();
+    lastCounterValue = parseCounterValue(initialText);
+    console.log('Initial counter value:', lastCounterValue);
+    
+    // البدء بالحالة الطبيعية (الخلفية تتحرك)
+    resumeBackground();
+  }, 1000);
+  
+})();
+</script>
+<!-- END BACKGROUND ANIMATION CONTROL -->
 
 
 </body></html>
