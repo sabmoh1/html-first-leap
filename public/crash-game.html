@@ -705,32 +705,30 @@
         const wrapRect = wrap.getBoundingClientRect();
         const pinRect = pin.getBoundingClientRect();
         
-        // Start point: bottom-left corner of the game area (fixed position)
+        // Fixed start point: bottom-left corner
         const startX = 20;
         const startY = wrapRect.height - 20;
         
-        // End point: center of the plane (current position)
+        // End point: center of plane (where the dot should be)
         const endX = pinRect.left - wrapRect.left + (pinRect.width/2);
         const endY = pinRect.top - wrapRect.top + (pinRect.height/2);
         
-        // Calculate distance and angle from start to end
+        // Calculate the line properties from start to end
         const deltaX = endX - startX;
-        const deltaY = endY - startY;
+        const deltaY = startY - endY; // reversed because we want upward direction
         const distance = Math.sqrt(deltaX * deltaX + deltaY * deltaY);
+        const angle = Math.atan2(deltaY, deltaX) * (180 / Math.PI);
         
-        // Calculate angle in degrees (from start point toward the plane)
-        const angle = Math.atan2(-deltaY, deltaX) * (180 / Math.PI);
-        
-        // Position the trail line at start point and rotate toward plane
+        // Position line at start point, rotated toward end point
         trailLine.style.left = startX + 'px';
         trailLine.style.top = startY + 'px';
         trailLine.style.height = Math.round(distance) + 'px';
-        trailLine.style.transform = 'rotate(' + angle + 'deg)';
+        trailLine.style.transform = 'rotate(' + (-angle) + 'deg)'; // negative to go upward
         trailLine.style.transformOrigin = 'bottom left';
         
-        // Position trail dot exactly at the plane position (behind it)
-        trailDot.style.left = Math.round(endX - 4) + 'px'; // center dot (8px width / 2)
-        trailDot.style.top = Math.round(endY - 4) + 'px';  // center dot (8px height / 2)
+        // Position dot exactly at plane position (behind it)
+        trailDot.style.left = Math.round(endX - 4) + 'px';
+        trailDot.style.top = Math.round(endY - 4) + 'px';
       }
 
       // new single-block sprite playback using CSS background but scaled so each frame == box width
