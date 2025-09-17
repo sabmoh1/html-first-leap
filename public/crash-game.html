@@ -874,7 +874,6 @@ if(isCountdownText(text)){
   const dotsVertical = document.querySelector('.crash-game__dots--vertical');
   const dotsHorizontal = document.querySelector('.crash-game__dots--horizontal');
   const counterElement = document.querySelector('.crash-game__counter');
-  const timerElement = document.querySelector('.crash-timer--countdown');
   
   if (!mountainsElement || !dotsVertical || !dotsHorizontal || !counterElement) {
     console.warn('Could not find required elements for background control');
@@ -884,10 +883,10 @@ if(isCountdownText(text)){
   console.log('Background control elements found');
   
   // متغيرات لتتبع الحالة
-  let isCountdownActive = false;
-  let isCounterRising = false;
   let lastCounterValue = null;
-  let countdownObserver = null;
+  let lastUpdateTime = 0;
+  let isCounterStable = false;
+  let stableCheckTimeout = null;
   
   // دالة لإيقاف الأنيميشن
   function freezeBackground() {
@@ -922,72 +921,62 @@ if(isCountdownText(text)){
     const match = text.replace(/,/g, '').match(/\d+(\.\d+)?/);
     if (!match) return null;
     const num = parseFloat(match[0]);
-    return isFinite(num) ? num : null;
+    return isFinite(num) ? num : 1.00;
   }
   
-  // مراقب للعد التنازلي
-  function observeCountdown() {
-    if (countdownObserver) {
-      countdownObserver.disconnect();
-    }
-    
-    countdownObserver = new MutationObserver(() => {
-      const isVisible = timerElement.style.display !== 'none';
-      
-      if (isVisible && !isCountdownActive) {
-        console.log('Countdown started - freezing background');
-        isCountdownActive = true;
-        isCounterRising = false;
-        freezeBackground();
-      } else if (!isVisible && isCountdownActive) {
-        console.log('Countdown ended - resuming background');
-        isCountdownActive = false;
-        isCounterRising = true;
-        resumeBackground();
-      }
-    });
-    
-    countdownObserver.observe(timerElement, {
-      attributes: true,
-      attributeFilter: ['style']
-    });
-  }
-  
-  // مراقب للعداد الرئيسي
-  const counterObserver = new MutationObserver(() => {
+  // دالة للتحقق من استقرار العداد
+  function checkCounterStability() {
     const currentText = counterElement.textContent.trim();
     
-    // تجاهل نصوص العد التنازلي
+    // تجاهل نصوص العد التنازلي - الخلفية تبقى تتحرك
     if (isCountdownText(currentText)) {
+      if (isCounterStable) {
+        console.log('Countdown detected - resuming background during countdown');
+        isCounterStable = false;
+        resumeBackground();
+      }
       return;
     }
     
     const currentValue = parseCounterValue(currentText);
+    const currentTime = Date.now();
     
-    if (currentValue !== null && lastCounterValue !== null) {
-      // إذا توقف العداد (لم يتغير لمدة معينة)
-      if (currentValue === lastCounterValue && isCounterRising) {
-        setTimeout(() => {
+    if (currentValue !== null) {
+      // إذا تغيرت القيمة، الخلفية تتحرك
+      if (currentValue !== lastCounterValue) {
+        lastCounterValue = currentValue;
+        lastUpdateTime = currentTime;
+        
+        if (isCounterStable) {
+          console.log('Counter value changed from stable state - resuming background');
+          isCounterStable = false;
+          resumeBackground();
+        }
+        
+        // إعادة ضبط مؤقت التحقق من الاستقرار
+        if (stableCheckTimeout) {
+          clearTimeout(stableCheckTimeout);
+        }
+        
+        // التحقق من الاستقرار بعد ثانية واحدة
+        stableCheckTimeout = setTimeout(() => {
           const latestText = counterElement.textContent.trim();
           const latestValue = parseCounterValue(latestText);
           
-          // إذا كان العداد ما زال متوقفاً عند نفس القيمة
-          if (latestValue === currentValue && isCounterRising) {
-            console.log('Counter stopped at:', currentValue, '- freezing background');
-            isCounterRising = false;
+          // إذا لم تتغير القيمة لمدة ثانية وليست عد تنازلي
+          if (latestValue === currentValue && !isCountdownText(latestText) && !isCounterStable) {
+            console.log('Counter stabilized at value:', latestValue, '- freezing background');
+            isCounterStable = true;
             freezeBackground();
           }
-        }, 500); // انتظار نصف ثانية للتأكد من التوقف
-      }
-      // إذا بدأ العداد بالصعود مرة أخرى
-      else if (currentValue > lastCounterValue && !isCounterRising && !isCountdownActive) {
-        console.log('Counter rising from:', lastCounterValue, 'to:', currentValue, '- resuming background');
-        isCounterRising = true;
-        resumeBackground();
+        }, 1000);
       }
     }
-    
-    lastCounterValue = currentValue;
+  }
+  
+  // مراقب للعداد الرئيسي
+  const counterObserver = new MutationObserver(() => {
+    checkCounterStability();
   });
   
   // بدء المراقبة
@@ -997,8 +986,12 @@ if(isCountdownText(text)){
     subtree: true
   });
   
-  // بدء مراقبة العد التنازلي
-  observeCountdown();
+  // التحقق الدوري كل 500ms للتأكد من الاستقرار
+  setInterval(() => {
+    if (!isCountdownText(counterElement.textContent.trim())) {
+      checkCounterStability();
+    }
+  }, 500);
   
   // التأكد من الحالة الأولية
   setTimeout(() => {
