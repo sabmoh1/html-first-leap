@@ -587,10 +587,10 @@
   pointer-events:none;
   width:3px;
   height:0px;
-  background:linear-gradient(to bottom, #FFD700, #FFA500);
+  background:linear-gradient(to top, #FFD700, #FFA500);
   transform-origin:bottom center;
   opacity:0;
-  transition: height 1200ms cubic-bezier(.15,.8,.25,1), opacity 300ms linear;
+  transition: height 1200ms cubic-bezier(.15,.8,.25,1), opacity 300ms linear, transform 1200ms cubic-bezier(.15,.8,.25,1);
   z-index:9998;
   border-radius:2px;
 }
@@ -601,10 +601,9 @@
   height:8px;
   background:radial-gradient(circle, #FFD700 30%, #FFA500 70%);
   border-radius:50%;
-  transform:translate(-50%, -50%);
   opacity:0;
   transition:opacity 300ms linear;
-  z-index:9998;
+  z-index:9997;
   box-shadow:0 0 6px rgba(255, 215, 0, 0.6);
 }
 </style>
@@ -706,17 +705,30 @@
         const wrapRect = wrap.getBoundingClientRect();
         const pinRect = pin.getBoundingClientRect();
         
-        // Position trail line starting from rocket's center-bottom
-        const lineLeft = pinRect.left - wrapRect.left + (pinRect.width/2) - 1.5; // center line (3px width / 2)
-        const lineTop = pinRect.top - wrapRect.top + pinRect.height;
-        trailLine.style.left = Math.round(lineLeft) + 'px';
-        trailLine.style.top = Math.round(lineTop) + 'px';
+        // Start point: bottom-left corner of the game area
+        const startX = 20;
+        const startY = wrapRect.height - 20;
         
-        // Position trail dot at the bottom of the line
-        const dotLeft = lineLeft + 1.5 - 4; // center dot (8px width / 2)
-        const dotTop = lineTop;
-        trailDot.style.left = Math.round(dotLeft) + 'px';
-        trailDot.style.top = Math.round(dotTop) + 'px';
+        // End point: center of the plane
+        const endX = pinRect.left - wrapRect.left + (pinRect.width/2);
+        const endY = pinRect.top - wrapRect.top + (pinRect.height/2);
+        
+        // Calculate distance and angle
+        const deltaX = endX - startX;
+        const deltaY = endY - startY;
+        const distance = Math.sqrt(deltaX * deltaX + deltaY * deltaY);
+        const angle = Math.atan2(deltaY, deltaX) * (180 / Math.PI);
+        
+        // Position and rotate the trail line from bottom-left to plane
+        trailLine.style.left = startX + 'px';
+        trailLine.style.top = startY + 'px';
+        trailLine.style.height = Math.round(distance) + 'px';
+        trailLine.style.transform = 'rotate(' + (angle + 90) + 'deg)';
+        trailLine.style.transformOrigin = 'bottom center';
+        
+        // Position trail dot at the end of the line (behind the plane)
+        trailDot.style.left = Math.round(endX - 4) + 'px'; // center dot (8px width / 2)
+        trailDot.style.top = Math.round(endY - 4) + 'px';  // center dot (8px height / 2)
       }
 
       // new single-block sprite playback using CSS background but scaled so each frame == box width
@@ -797,9 +809,19 @@
       function showPlane(){ 
         pin.style.opacity = '1'; 
         pin.style.pointerEvents = 'auto'; 
+        // Update trail position and show elements
         positionTrail();
         trailLine.style.opacity = '1'; 
         trailDot.style.opacity = '1'; 
+        
+        // Start updating trail position during flight
+        const updateInterval = setInterval(() => {
+          if (state === 'flying') {
+            positionTrail();
+          } else {
+            clearInterval(updateInterval);
+          }
+        }, 16); // ~60fps updates
       }
       function hidePlane(){ 
         pin.style.opacity = '0'; 
@@ -821,10 +843,8 @@
         pin.style.transition = 'transform ' + duration + 'ms cubic-bezier(.15,.8,.25,1), opacity 300ms linear';
         pin.style.transform = (baseTransform ? baseTransform + ' ' : '') + ' translate3d(' + forwardPx + 'px, -' + upPx + 'px, 0px)';
         
-        // Set trail line height to follow the rocket's path
-        const trailHeight = Math.sqrt(forwardPx*forwardPx + upPx*upPx);
-        trailLine.style.transition = 'height ' + duration + 'ms cubic-bezier(.15,.8,.25,1)';
-        trailLine.style.height = Math.round(trailHeight) + 'px';
+        // The trail line will be dynamically updated by positionTrail during flight
+        trailLine.style.transition = 'height ' + duration + 'ms cubic-bezier(.15,.8,.25,1), transform ' + duration + 'ms cubic-bezier(.15,.8,.25,1)';
         
         showPlane();
       }
