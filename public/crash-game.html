@@ -603,7 +603,7 @@
   border-radius:50%;
   opacity:0;
   transition:opacity 300ms linear;
-  z-index:9995;
+  z-index:9996;
   box-shadow:0 0 6px rgba(255, 215, 0, 0.6);
 }
 </style>
@@ -705,11 +705,11 @@
         const wrapRect = wrap.getBoundingClientRect();
         const pinRect = pin.getBoundingClientRect();
         
-        // Start point: bottom-left corner of the game area (fixed position)
+        // Start point: bottom-left corner of the game area
         const startX = 20;
         const startY = wrapRect.height - 20;
         
-        // End point: center of the plane (current position)
+        // End point: center of the plane
         const endX = pinRect.left - wrapRect.left + (pinRect.width/2);
         const endY = pinRect.top - wrapRect.top + (pinRect.height/2);
         
@@ -718,19 +718,21 @@
         const deltaY = endY - startY;
         const distance = Math.sqrt(deltaX * deltaX + deltaY * deltaY);
         
-        // Calculate angle in degrees (from start point toward the plane)
-        const angle = Math.atan2(-deltaY, deltaX) * (180 / Math.PI);
+        // Calculate angle in degrees (from horizontal, pointing toward the plane)
+        const angle = Math.atan2(-deltaY, deltaX) * (180 / Math.PI); // negative deltaY because CSS Y increases downward
         
-        // Position the trail line at start point and rotate toward plane
+        // Position the trail line at start point
         trailLine.style.left = startX + 'px';
         trailLine.style.top = startY + 'px';
         trailLine.style.height = Math.round(distance) + 'px';
         trailLine.style.transform = 'rotate(' + angle + 'deg)';
         trailLine.style.transformOrigin = 'bottom left';
         
-        // Position trail dot exactly at the plane position (behind it)
-        trailDot.style.left = Math.round(endX - 4) + 'px'; // center dot (8px width / 2)
-        trailDot.style.top = Math.round(endY - 4) + 'px';  // center dot (8px height / 2)
+        // Position trail dot at the end of the line (behind the plane) - calculate end position of rotated line
+        const dotX = startX + (distance * Math.cos(angle * Math.PI / 180)) - 4; // center dot
+        const dotY = startY - (distance * Math.sin(angle * Math.PI / 180)) - 4; // center dot
+        trailDot.style.left = Math.round(dotX) + 'px';
+        trailDot.style.top = Math.round(dotY) + 'px';
       }
 
       // new single-block sprite playback using CSS background but scaled so each frame == box width
