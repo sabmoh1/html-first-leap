@@ -581,18 +581,22 @@
   overflow: hidden;
   image-rendering: pixelated;
 }
-/* Yellow line with dot for rocket trail */
+/* Yellow curved line for rocket trail */
 .injected-trail-line-v5{
   position:absolute;
   pointer-events:none;
-  width:3px;
-  height:0px;
-  background:linear-gradient(to top, #FFD700, #FFA500);
-  transform-origin:bottom left;
+  width:100%;
+  height:100%;
   opacity:0;
-  transition: height 1200ms cubic-bezier(.15,.8,.25,1), opacity 300ms linear, transform 1200ms cubic-bezier(.15,.8,.25,1);
+  transition: opacity 300ms linear;
   z-index:9998;
-  border-radius:2px;
+}
+.injected-trail-line-v5 svg{
+  width:100%;
+  height:100%;
+  position:absolute;
+  top:0;
+  left:0;
 }
 .injected-trail-dot-v5{
   position:absolute;
@@ -673,10 +677,12 @@
       explosion.className = 'injected-explosion-v5';
       wrap.appendChild(explosion);
 
-      // create trail line element
+      // create trail line element with SVG for curved path
       const trailLine = document.createElement('div');
       trailLine.className = 'injected-trail-line-v5';
+      trailLine.innerHTML = '<svg><path id="trail-path" stroke="#FFD700" stroke-width="3" fill="none" opacity="0"></path></svg>';
       wrap.appendChild(trailLine);
+      const trailPath = trailLine.querySelector('#trail-path');
 
       // create trail dot element
       const trailDot = document.createElement('div');
@@ -713,18 +719,16 @@
         const endX = pinRect.left - wrapRect.left + (pinRect.width/2);
         const endY = pinRect.top - wrapRect.top + (pinRect.height/2);
         
-        // Calculate the line properties from start to end
-        const deltaX = endX - startX;
-        const deltaY = startY - endY; // reversed because we want upward direction
-        const distance = Math.sqrt(deltaX * deltaX + deltaY * deltaY);
-        const angle = Math.atan2(deltaY, deltaX) * (180 / Math.PI);
+        // Create curved path from start to end (like in the reference image)
+        const controlX1 = startX + (endX - startX) * 0.3;
+        const controlY1 = startY - (startY - endY) * 0.1;
+        const controlX2 = startX + (endX - startX) * 0.7;
+        const controlY2 = startY - (startY - endY) * 0.8;
         
-        // Position line at start point, rotated toward end point
-        trailLine.style.left = startX + 'px';
-        trailLine.style.top = startY + 'px';
-        trailLine.style.height = Math.round(distance) + 'px';
-        trailLine.style.transform = 'rotate(' + (-angle) + 'deg)'; // negative to go upward
-        trailLine.style.transformOrigin = 'bottom left';
+        // Create SVG curved path
+        const pathData = `M ${startX} ${startY} C ${controlX1} ${controlY1}, ${controlX2} ${controlY2}, ${endX} ${endY}`;
+        trailPath.setAttribute('d', pathData);
+        trailPath.style.opacity = '1';
         
         // Position dot exactly at plane position (behind it)
         trailDot.style.left = Math.round(endX - 4) + 'px';
@@ -827,8 +831,10 @@
         pin.style.opacity = '0'; 
         pin.style.pointerEvents = 'none'; 
         trailLine.style.opacity = '0';
-        trailLine.style.height = '0px';
-        trailLine.style.transform = 'rotate(0deg)';
+        if(trailPath) {
+          trailPath.style.opacity = '0';
+          trailPath.setAttribute('d', '');
+        }
         trailDot.style.opacity = '0';
       }
 
@@ -857,6 +863,10 @@
         
         // Immediately hide trail line and dot when explosion starts
         trailLine.style.opacity = '0';
+        if(trailPath) {
+          trailPath.style.opacity = '0';
+          trailPath.setAttribute('d', '');
+        }
         trailDot.style.opacity = '0';
         
         const comp = window.getComputedStyle(pin).transform || '';
@@ -880,10 +890,12 @@
           pin.style.transition = 'transform 0ms, opacity 200ms linear';
           pin.style.transform = (baseTransform ? baseTransform + ' ' : '') + ' translate3d(0px,0px,0px)';
           pin.style.opacity = '0';
-          // Reset trail line height for next flight
-          trailLine.style.transition = 'height 0ms';
-          trailLine.style.height = '0px';
+          // Reset trail line for next flight
           trailLine.style.opacity = '0';
+          if(trailPath) {
+            trailPath.style.opacity = '0';
+            trailPath.setAttribute('d', '');
+          }
           trailDot.style.opacity = '0';
         }, 1200); // Wait until explosion is completely finished
       }
