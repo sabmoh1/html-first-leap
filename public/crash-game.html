@@ -581,6 +581,32 @@
   overflow: hidden;
   image-rendering: pixelated;
 }
+/* Yellow line with dot for rocket trail */
+.injected-trail-line-v5{
+  position:absolute;
+  pointer-events:none;
+  width:3px;
+  height:0px;
+  background:linear-gradient(to bottom, #FFD700, #FFA500);
+  transform-origin:bottom center;
+  opacity:0;
+  transition: height 1200ms cubic-bezier(.15,.8,.25,1), opacity 300ms linear;
+  z-index:9998;
+  border-radius:2px;
+}
+.injected-trail-dot-v5{
+  position:absolute;
+  pointer-events:none;
+  width:8px;
+  height:8px;
+  background:radial-gradient(circle, #FFD700 30%, #FFA500 70%);
+  border-radius:50%;
+  transform:translate(-50%, -50%);
+  opacity:0;
+  transition:opacity 300ms linear;
+  z-index:9998;
+  box-shadow:0 0 6px rgba(255, 215, 0, 0.6);
+}
 </style>
 
 <script id="injected-pin-script-v5">
@@ -648,6 +674,16 @@
       explosion.className = 'injected-explosion-v5';
       wrap.appendChild(explosion);
 
+      // create trail line element
+      const trailLine = document.createElement('div');
+      trailLine.className = 'injected-trail-line-v5';
+      wrap.appendChild(trailLine);
+
+      // create trail dot element
+      const trailDot = document.createElement('div');
+      trailDot.className = 'injected-trail-dot-v5';
+      wrap.appendChild(trailDot);
+
       // preload possible sprite image
       let explosionImg = null;
       (async ()=>{
@@ -664,6 +700,23 @@
         const top  = pinRect.top  - wrapRect.top  + (pinRect.height/2) - (h/2);
         explosion.style.left = Math.round(left) + 'px';
         explosion.style.top  = Math.round(top) + 'px';
+      }
+
+      function positionTrail(){
+        const wrapRect = wrap.getBoundingClientRect();
+        const pinRect = pin.getBoundingClientRect();
+        
+        // Position trail line starting from rocket's center-bottom
+        const lineLeft = pinRect.left - wrapRect.left + (pinRect.width/2) - 1.5; // center line (3px width / 2)
+        const lineTop = pinRect.top - wrapRect.top + pinRect.height;
+        trailLine.style.left = Math.round(lineLeft) + 'px';
+        trailLine.style.top = Math.round(lineTop) + 'px';
+        
+        // Position trail dot at the bottom of the line
+        const dotLeft = lineLeft + 1.5 - 4; // center dot (8px width / 2)
+        const dotTop = lineTop;
+        trailDot.style.left = Math.round(dotLeft) + 'px';
+        trailDot.style.top = Math.round(dotTop) + 'px';
       }
 
       // new single-block sprite playback using CSS background but scaled so each frame == box width
@@ -741,8 +794,20 @@
         return isFinite(n)?n:null;
       }
 
-      function showPlane(){ pin.style.opacity = '1'; pin.style.pointerEvents = 'auto'; }
-      function hidePlane(){ pin.style.opacity = '0'; pin.style.pointerEvents = 'none'; }
+      function showPlane(){ 
+        pin.style.opacity = '1'; 
+        pin.style.pointerEvents = 'auto'; 
+        positionTrail();
+        trailLine.style.opacity = '1'; 
+        trailDot.style.opacity = '1'; 
+      }
+      function hidePlane(){ 
+        pin.style.opacity = '0'; 
+        pin.style.pointerEvents = 'none'; 
+        trailLine.style.opacity = '0';
+        trailLine.style.height = '0px';
+        trailDot.style.opacity = '0';
+      }
 
       function startFlight(){
         if(animating) return;
@@ -755,6 +820,12 @@
         const duration = Math.max(MIN_FLIGHT_MS, Math.min(MAX_FLIGHT_MS, Math.round(distance * 3)));
         pin.style.transition = 'transform ' + duration + 'ms cubic-bezier(.15,.8,.25,1), opacity 300ms linear';
         pin.style.transform = (baseTransform ? baseTransform + ' ' : '') + ' translate3d(' + forwardPx + 'px, -' + upPx + 'px, 0px)';
+        
+        // Set trail line height to follow the rocket's path
+        const trailHeight = Math.sqrt(forwardPx*forwardPx + upPx*upPx);
+        trailLine.style.transition = 'height ' + duration + 'ms cubic-bezier(.15,.8,.25,1)';
+        trailLine.style.height = Math.round(trailHeight) + 'px';
+        
         showPlane();
       }
 
@@ -762,12 +833,19 @@
         if(!animating) return;
         animating = false;
         state = 'exploded';
+        
+        // Immediately hide trail line and dot when explosion starts
+        trailLine.style.opacity = '0';
+        trailDot.style.opacity = '0';
+        
         const comp = window.getComputedStyle(pin).transform || '';
         pin.style.transition = 'transform 140ms linear, opacity 300ms linear';
         if(comp && comp!=='none'){
           pin.style.transform = comp;
         }
-        setTimeout(()=>{ pin.style.opacity = '0'; }, 90);
+        
+        // Hide plane immediately when explosion starts
+        setTimeout(()=>{ pin.style.opacity = '0'; }, 50);
 
         // play explosion (sprite preferred)
         if(explosionImg){
@@ -776,12 +854,17 @@
           playParticleExplosion();
         }
 
-        // after explosion, reset plane position and keep hidden until next rising
+        // Reset plane position after explosion completes (increased delay to avoid glitch)
         setTimeout(()=>{
-          pin.style.transition = 'transform 220ms ease-out, opacity 200ms linear';
+          pin.style.transition = 'transform 0ms, opacity 200ms linear';
           pin.style.transform = (baseTransform ? baseTransform + ' ' : '') + ' translate3d(0px,0px,0px)';
           pin.style.opacity = '0';
-        }, 900);
+          // Reset trail line height for next flight
+          trailLine.style.transition = 'height 0ms';
+          trailLine.style.height = '0px';
+          trailLine.style.opacity = '0';
+          trailDot.style.opacity = '0';
+        }, 1200); // Wait until explosion is completely finished
       }
 
       if(counter){
@@ -843,10 +926,10 @@
   return /^[1-9]$|^10$/.test(txt);
 }
 
-      window.addEventListener('resize', positionExplosion);
-      const mo = new MutationObserver(positionExplosion);
+      window.addEventListener('resize', () => { positionExplosion(); positionTrail(); });
+      const mo = new MutationObserver(() => { positionExplosion(); positionTrail(); });
       mo.observe(wrap, {attributes:true, childList:true, subtree:true});
-      setTimeout(positionExplosion, 80);
+      setTimeout(() => { positionExplosion(); positionTrail(); }, 80);
 
     }).catch(e=>{ console.error('Injected v5 init error', e); });
   }catch(err){ console.error('Injected v5 error', err); }
