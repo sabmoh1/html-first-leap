@@ -788,43 +788,50 @@
         const obs = new MutationObserver((muts)=>{
           const text = (counter.textContent || '').trim();
 
-// تجاهل أرقام العد التنازلي (1..10)
-if(isCountdownText(text)){
-  return;
-}
+          // إذا كان النص عد تنازلي - اخفي الطائرة وأوقف كل شيء
+          if(isCountdownText(text)){
+            hidePlane();
+            animating = false;
+            state = 'idle';
+            if(stopTimer) clearTimeout(stopTimer);
+            return;
+          }
+
           const num = parseNumberFromString(text);
           const now = Date.now();
-          if(num !== null && lastNumeric !== null && !(Number.isInteger(num) && num <= 10)){
-            // rising detection with thresholds
-            if(num > lastNumeric + MIN_DELTA && num >= MIN_START_VALUE){
-              // start flight only if not already flying
+          
+          // تأكد أن القيمة رقم عشري وليست عد تنازلي
+          if(num !== null && num >= 1.00 && !Number.isInteger(num)){
+            // إذا كانت القيمة ترتفع وليست عد تنازلي
+            if(lastNumeric !== null && num > lastNumeric + MIN_DELTA && num >= MIN_START_VALUE){
+              // ابدأ الطيران فقط إذا لم تكن تطير بالفعل
               if(state !== 'flying'){
                 startFlight();
               }
-            } else if(num < lastNumeric - MIN_DELTA){
-              // countdown/ decreasing -> hide plane and go idle
+            } else if(lastNumeric !== null && num < lastNumeric - MIN_DELTA){
+              // القيمة تتناقص - اخفي الطائرة
               hidePlane();
               animating = false;
               state = 'idle';
             }
-            // reset stop timer to detect when value stops changing
+            
+            // إعادة تعيين مؤقت التوقف
             if(stopTimer) clearTimeout(stopTimer);
             stopTimer = setTimeout(()=>{
               if(state === 'flying'){
                 stopFlightAndExplode();
               }
             }, STOP_DEBOUNCE);
+            
             lastNumeric = num;
           } else {
-            // fallback to text-change detection - but skip if countdown
-            if(text !== lastText && !isCountdownText(text)){
-              if(state !== 'flying'){
-                startFlight();
-              }
-              if(stopTimer) clearTimeout(stopTimer);
-              stopTimer = setTimeout(()=>{ if(state === 'flying') stopFlightAndExplode(); }, STOP_DEBOUNCE);
-            }
+            // أي نص آخر - تأكد أن الطائرة مخفية
+            hidePlane();
+            animating = false;
+            state = 'idle';
+            if(stopTimer) clearTimeout(stopTimer);
           }
+          
           lastText = text;
         });
         obs.observe(counter, {characterData:true, childList:true, subtree:true});
