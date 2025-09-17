@@ -958,18 +958,18 @@ if(isCountdownText(text)){
           clearTimeout(stableCheckTimeout);
         }
         
-        // التحقق من الاستقرار بعد ثانية واحدة
+        // التحقق من الاستقرار بشكل فوري مع تأخير بسيط جداً
         stableCheckTimeout = setTimeout(() => {
           const latestText = counterElement.textContent.trim();
           const latestValue = parseCounterValue(latestText);
           
-          // إذا لم تتغير القيمة لمدة ثانية وليست عد تنازلي
+          // إذا لم تتغير القيمة وليست عد تنازلي
           if (latestValue === currentValue && !isCountdownText(latestText) && !isCounterStable) {
             console.log('Counter stabilized at value:', latestValue, '- freezing background');
             isCounterStable = true;
             freezeBackground();
           }
-        }, 1000);
+        }, 50); // تقليل التأخير إلى 50ms فقط للاستجابة الفورية
       }
     }
   }
