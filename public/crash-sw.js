@@ -12,23 +12,30 @@ self.addEventListener("activate", (event) => {
 });
 
 self.addEventListener("fetch", (event) => {
+  let url;
   try {
-    const url = new URL(event.request.url);
-    if (url.hostname === TARGET_HOST) {
-      const proxied = new URL(
-        PROXY_PREFIX + url.pathname + url.search,
-        self.location.origin
-      );
-      const newReq = new Request(proxied.toString(), {
-        method: event.request.method,
-        headers: event.request.headers,
-        mode: "cors",
-        credentials: "omit",
-        redirect: "follow",
-      });
-      event.respondWith(fetch(newReq));
-    }
+    url = new URL(event.request.url);
   } catch (_) {
-    // ignore
+    return;
   }
+  if (url.hostname !== TARGET_HOST) return;
+
+  const proxied =
+    self.location.origin + PROXY_PREFIX + url.pathname + url.search;
+
+  event.respondWith(
+    fetch(proxied, { method: event.request.method, credentials: "omit" })
+      .then((res) => {
+        const headers = new Headers(res.headers);
+        headers.set("Access-Control-Allow-Origin", "*");
+        return new Response(res.body, {
+          status: res.status,
+          statusText: res.statusText,
+          headers,
+        });
+      })
+      .catch(
+        () => new Response("", { status: 502, statusText: "Proxy error" })
+      )
+  );
 });
