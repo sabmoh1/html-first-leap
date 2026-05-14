@@ -8,6 +8,14 @@ export default defineConfig(({ mode }) => ({
   server: {
     host: "::",
     port: 8080,
+    proxy: {
+      "/proxy-1xbet": {
+        target: "https://dz.1xbet.com",
+        changeOrigin: true,
+        secure: true,
+        rewrite: (p) => p.replace(/^\/proxy-1xbet/, ""),
+      },
+    },
   },
   plugins: [react(), mode === "development" && componentTagger()].filter(Boolean),
   resolve: {
