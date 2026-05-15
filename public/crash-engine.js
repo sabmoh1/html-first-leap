@@ -1,35 +1,36 @@
-/* Crash game engine — drives the static 1xbet HTML markup with a
-   simulated round loop matching real WebSocket round semantics:
-   waiting countdown -> flying (multiplier curve) -> crash -> repeat.
-   Updates: SVG curve, plane pin, shine, multiplier text, timer,
-   live bets list (green on cashout, red on crash), totals,
-   history table. Mountains/clouds animation pauses on crash/wait. */
+/* Crash game engine — drives the static 1xbet HTML markup. */
 (function () {
   "use strict";
 
-  // ---------- Constants ----------
-  const SVG_W = 1230, SVG_H = 420;
-  const X0 = 47, Y0 = 385;          // origin (ground-left)
-  const X1 = 1207, Y1 = 20;         // top-right bound
-  const COUNTDOWN_MS = 5000;        // pre-flight wait
-  const CRASH_HOLD_MS = 2500;       // post-crash hold
-  const GROWTH = 0.00018;           // multiplier growth per ms (~e^kt)
+  const SVG_W = 1230;
+  const X0 = 47, Y0 = 385;
+  const X1 = 1207, Y1 = 20;
+  const COUNTDOWN_MS = 5000;
+  const CRASH_HOLD_MS = 2500;
+  const GROWTH = 0.00018;
   const MAX_M = 200;
 
-  // ---------- DOM ----------
   const $ = (s, r) => (r || document).querySelector(s);
   const $$ = (s, r) => Array.from((r || document).querySelectorAll(s));
 
   const counterEl = $(".crash-game__counter");
   const strokeEl = $(".crash-game__stroke");
+  // The static HTML ships an orange dot + sample text at end of stroke; remove.
+  if (strokeEl) {
+    const g = strokeEl.parentNode;
+    if (g) {
+      g.querySelectorAll("circle").forEach((c) => {
+        if (c.getAttribute("fill") === "#de8a06") c.remove();
+      });
+    }
+  }
+  const planePin = $(".crash-game__pin--crash"); // shared element, we toggle modifier
   const planeShine = $(".crash-game__wrap .crash-game__shine");
-  const planePin = $(".crash-game__pin--crash");
   const waitingBox = $(".crash-game__waiting");
   const waitingText = $(".crash-game__text");
   const timerBox = $(".crash-game__timer");
   const timerCounter = $(".crash-timer__counter");
   const timerSegments = $$(".crash-timer__segment");
-  const gameRoot = $(".crash__game");
   const mountainsEl = $(".crash-game__mountains");
 
   const totalPlayersEl = $(".crash-total__value--players");
@@ -38,42 +39,41 @@
   const resultsTable = $(".crash-results__table");
   const historyTable = $(".crash-history__table");
   const historyEmpty = $(".crash-history__empty");
+  const svgEl = $(".crash-game__svg");
 
   if (!counterEl || !strokeEl) return;
 
-  // ---------- Pause CSS (clouds/mountains/animations) ----------
-  const css = document.createElement("style");
-  css.textContent = `
-    .crash-game.crash-game--paused .crash-game__mountains *,
-    .crash-game.crash-game--paused .crash-game__mountain,
-    .crash-game.crash-game--paused [class*="cloud"],
-    .crash-game.crash-game--paused .crash-game__bg,
-    .crash-game.crash-game--paused .crash-game__bg * {
-      animation-play-state: paused !important;
-    }
-    .crash-game__counter.is-crashed { fill: #ff3b3b; }
-    .crash-results-table__row { transition: background-color .25s; }
+  // Make the canvas fill the available width (covers right gap).
+  if (svgEl) {
+    svgEl.removeAttribute("width");
+    svgEl.removeAttribute("height");
+    svgEl.style.width = "100%";
+    svgEl.style.height = "auto";
+  }
+  const styleFix = document.createElement("style");
+  styleFix.textContent = `
+    .crash-game__svg{width:100% !important;height:auto !important;display:block;}
+    .crash-game__timeline{width:100%;}
+    .crash-game__mountains{width:100%;}
+    .crash__wrap--main{flex-grow:1;min-width:0;}
+    .crash-game__counter{ fill:#fff !important; }
   `;
-  document.head.appendChild(css);
+  document.head.appendChild(styleFix);
 
-  // ---------- Helpers ----------
-  function rand(a, b) { return a + Math.random() * (b - a); }
   function pad(n) { return n < 10 ? "0" + n : "" + n; }
   function fmt(n, d = 2) { return Number(n).toFixed(d); }
+  function rand(a, b) { return a + Math.random() * (b - a); }
 
-  // House-edge crash distribution: P(crash >= x) = 0.97 / x
+  // crash distribution: P(crash >= x) = 0.97 / x, with hard floor 1.05
   function sampleCrashPoint() {
-    const r = Math.random();
-    if (r < 0.03) return 1.00;
+    const r = Math.random() * 0.97; // exclude instant-crash band
     const x = 0.97 / (1 - r);
-    return Math.min(MAX_M, Math.max(1.01, Math.floor(x * 100) / 100));
+    return Math.min(MAX_M, Math.max(1.05, Math.floor(x * 100) / 100));
   }
 
   function curvePoint(m) {
-    // map multiplier -> normalized progress [0..1]
-    const t = Math.min(1, Math.log(m) / Math.log(15)); // visual scale: 15x fills view
+    const t = Math.min(1, Math.log(m) / Math.log(15));
     const x = X0 + (X1 - X0) * t;
-    // y is parabolic: more curve at higher multipliers
     const norm = t * t;
     const y = Y0 - (Y0 - Y1) * norm;
     return { x, y, t };
@@ -90,9 +90,28 @@
     return d;
   }
 
-  function setPlane(m, visible) {
+  function setMountainsRunning(run) {
+    if (!mountainsEl) return;
+    mountainsEl.classList.toggle("crash-game__mountains--game", !!run);
+  }
+
+  function setWaitingVisible(show, text) {
+    if (!waitingBox) return;
+    waitingBox.classList.toggle("crash-game__waiting--is-show", !!show);
+    waitingBox.style.opacity = show ? "" : "0";
+    waitingBox.style.pointerEvents = show ? "" : "none";
+    if (text && waitingText) waitingText.textContent = text;
+    // Always hide the inner orange "waiting" pin/shine — the app uses its own.
+    const wp = waitingBox.querySelector(".crash-game__pin--waiting");
+    const ws = waitingBox.querySelector(".crash-game__shine--waiting");
+    if (wp) wp.style.display = "none";
+    if (ws) ws.style.display = "none";
+  }
+
+  function setPlane(m, mode) {
+    // mode: "hidden" | "fly" | "crash"
     if (!planePin || !planeShine) return;
-    if (!visible) {
+    if (mode === "hidden") {
       planePin.style.display = "none";
       planeShine.style.display = "none";
       return;
@@ -100,27 +119,28 @@
     const p = curvePoint(m);
     const leftPct = (p.x / SVG_W) * 100;
     const bottomPct = ((Y0 - p.y) / Y0) * 100;
-    // approximate tangent angle
-    const eps = 0.001;
-    const p2 = curvePoint(m * (1 + eps));
-    const dx = p2.x - p.x, dy = p2.y - p.y;
-    const ang = Math.atan2(dy, dx) * 180 / Math.PI; // negative since y up
+    if (mode === "fly") {
+      planePin.classList.remove("crash-game__pin--crash");
+    } else if (mode === "crash") {
+      planePin.classList.add("crash-game__pin--crash");
+    }
     planePin.style.cssText =
-      `display:block;left:${leftPct}%;bottom:${bottomPct}%;transform:rotate(${ang.toFixed(1)}deg);`;
+      `display:block;left:${leftPct}%;bottom:${bottomPct}%;`;
     planeShine.style.cssText =
       `display:block;left:${leftPct}%;bottom:${(bottomPct + 4).toFixed(1)}%;`;
   }
 
-  // ---------- Live bets ----------
+  // ---- bets ----
   const NAMES_POOL = Array.from({ length: 60 }, () =>
     "*******" + Math.floor(rand(10, 99)));
-  let activeBets = []; // {id,name,bet,cashed,cashAt,win,row}
+  let activeBets = [];
   let totals = { players: 0, bets: 0, prize: 0 };
 
   function clearBets() {
     if (!resultsTable) return;
-    $$(".crash-results-table__row", resultsTable)
-      .forEach((r, i) => { if (i > 0) r.remove(); });
+    $$(".crash-results-table__row", resultsTable).forEach((r, i) => {
+      if (i > 0) r.remove();
+    });
     activeBets = [];
     totals = { players: 0, bets: 0, prize: 0 };
     syncTotals();
@@ -163,7 +183,7 @@
     bet.row.classList.add("crash-results-table__row--win");
   }
 
-  function lossAllPending(crashAt) {
+  function lossAllPending() {
     activeBets.forEach((b) => {
       if (!b.cashed) {
         const cells = b.row.querySelectorAll(".crash-results-table__cell");
@@ -173,7 +193,6 @@
     });
   }
 
-  // ---------- History ----------
   function addHistory(crashAt) {
     if (!historyTable) return;
     if (historyEmpty) historyEmpty.style.display = "none";
@@ -193,15 +212,12 @@
       `<p class="crash-history-table__cell">—</p>` +
       `<p class="crash-history-table__cell">—</p>` +
       `<p class="crash-history-table__cell" style="color:${crashAt<2?'#ff3b3b':'#28c76f'}">x${fmt(crashAt)}</p>`;
-    // insert just after header row
     const header = historyTable.firstElementChild;
     header.after(row);
-    // keep last 30
-    const rows = $$(".crash-history-table__row", historyTable);
-    rows.slice(31).forEach((r) => r.remove());
+    $$(".crash-history-table__row", historyTable).slice(31).forEach((r) => r.remove());
   }
 
-  // ---------- Player bet (Place a bet / Cash out) ----------
+  // ---- player buttons ----
   const playButtons = $$(".crash-bet-btn--play");
   const playerState = playButtons.map(() => ({ pending: null, active: null }));
   function setPlayBtn(idx, mode, mult) {
@@ -211,17 +227,16 @@
     const nextText = btn.querySelector(".crash-bet-btn__text--next-round");
     if (mode === "place") {
       playText.textContent = "Place a bet";
-      nextText.style.display = "";
-      btn.style.background = "";
+      if (nextText) nextText.style.display = "";
     } else if (mode === "pending") {
       playText.textContent = "Cancel";
-      nextText.style.display = "";
+      if (nextText) nextText.style.display = "";
     } else if (mode === "cashout") {
       playText.textContent = "Cash out " + fmt(mult) + "x";
-      nextText.style.display = "none";
+      if (nextText) nextText.style.display = "none";
     } else if (mode === "won") {
       playText.textContent = "Won " + fmt(mult) + "x";
-      nextText.style.display = "none";
+      if (nextText) nextText.style.display = "none";
     }
   }
 
@@ -232,7 +247,6 @@
       const amt = Math.max(1, parseFloat((input && input.value) || "10") || 10);
       const ps = playerState[idx];
       if (state.phase === "flying" && ps.active) {
-        // Cash out
         cashoutBet(ps.active, state.mult);
         setPlayBtn(idx, "won", state.mult);
         ps.active = null;
@@ -258,33 +272,26 @@
     });
   });
 
-  // ---------- Round loop ----------
+  // ---- round loop ----
   const state = { phase: "idle", mult: 1, crashAt: 1, t0: 0 };
   let rafId = 0, tickId = 0;
-
-  function setPaused(paused) {
-    if (!gameRoot) return;
-    gameRoot.classList.toggle("crash-game--paused", paused);
-  }
 
   function startCountdown() {
     state.phase = "waiting";
     state.mult = 1;
-    setPaused(true);
-    // hide plane, blank curve, show timer
-    setPlane(1, false);
+    setMountainsRunning(false);              // pause clouds/mountains
+    setPlane(1, "hidden");                   // no plane / no explosion
     strokeEl.setAttribute("d", `M${X0} ${Y0}`);
     counterEl.textContent = "";
-    counterEl.classList.remove("is-crashed");
+    setWaitingVisible(false);                // hide orange waiting pin
     if (timerBox) timerBox.style.display = "";
-    if (waitingBox) waitingBox.style.display = "none";
 
     const startedAt = performance.now();
     const total = COUNTDOWN_MS;
     function tick() {
       const left = Math.max(0, total - (performance.now() - startedAt));
-      const sec = (left / 1000);
-      if (timerCounter) timerCounter.textContent = sec.toFixed(1);
+      const sec = Math.ceil(left / 1000);     // integer seconds
+      if (timerCounter) timerCounter.textContent = String(sec);
       const filled = Math.round((1 - left / total) * timerSegments.length);
       timerSegments.forEach((s, i) => {
         s.style.opacity = i < filled ? "0.25" : "1";
@@ -295,10 +302,9 @@
       }
     }
     clearInterval(tickId);
-    tickId = setInterval(tick, 50);
+    tickId = setInterval(tick, 100);
     tick();
 
-    // promote pending bets to active
     playerState.forEach((ps, idx) => {
       if (ps.pending) {
         ps.active = addBet("YOU", ps.pending.amount);
@@ -306,7 +312,6 @@
         setPlayBtn(idx, "cashout", 1);
       }
     });
-    // seed bots
     seedBots();
   }
 
@@ -317,26 +322,19 @@
       const name = NAMES_POOL[Math.floor(Math.random() * NAMES_POOL.length)];
       const amt = Math.round(rand(10, 800) * 100) / 100;
       const bet = addBet(name, amt);
-      // pre-decide bot cashout
       bet._botCashoutAt = Math.random() < 0.85
         ? 1.05 + Math.pow(Math.random(), 2) * 6
         : null;
     }
-    // re-add player bets at top
-    playerState.forEach((ps, idx) => {
-      if (ps.active) {
-        ps.active = addBet("YOU", ps.active.bet);
-        setPlayBtn(idx, "cashout", 1);
-      }
-    });
   }
 
   function startFlight() {
     state.phase = "flying";
     state.crashAt = sampleCrashPoint();
     state.t0 = performance.now();
-    setPaused(false);
+    setMountainsRunning(true);                // resume clouds/mountains
     if (timerBox) timerBox.style.display = "none";
+    setPlane(1, "fly");                       // show airplane sprite at start
 
     function frame(now) {
       const dt = now - state.t0;
@@ -344,13 +342,11 @@
       state.mult = m;
       counterEl.textContent = fmt(m) + "x ";
       strokeEl.setAttribute("d", buildPath(m));
-      setPlane(m, true);
+      setPlane(m, "fly");
 
-      // update player cashout button label
       playerState.forEach((ps, idx) => {
         if (ps.active) setPlayBtn(idx, "cashout", m);
       });
-      // bot cashouts
       activeBets.forEach((b) => {
         if (!b.cashed && b._botCashoutAt && m >= b._botCashoutAt) {
           cashoutBet(b, b._botCashoutAt);
@@ -369,15 +365,12 @@
 
   function crash() {
     state.phase = "crashed";
-    setPaused(true);
+    setMountainsRunning(false);               // pause on crash
     counterEl.textContent = fmt(state.crashAt) + "x";
-    counterEl.classList.add("is-crashed");
-    if (waitingText) waitingText.textContent = `Crashed at ${fmt(state.crashAt)}x`;
-    if (waitingBox) waitingBox.style.display = "";
-    setPlane(state.crashAt, false);
-    lossAllPending(state.crashAt);
+    setWaitingVisible(true, `Crashed at ${fmt(state.crashAt)}x`);
+    setPlane(state.crashAt, "crash");         // explosion sprite, in place
+    lossAllPending();
     addHistory(state.crashAt);
-    // reset player buttons
     playerState.forEach((ps, idx) => {
       ps.active = null;
       setPlayBtn(idx, "place");
@@ -385,6 +378,5 @@
     setTimeout(startCountdown, CRASH_HOLD_MS);
   }
 
-  // boot
   setTimeout(startCountdown, 400);
 })();
